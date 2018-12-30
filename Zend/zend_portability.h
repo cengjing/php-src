@@ -12,13 +12,11 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@zend.com so we can mail you a copy immediately.              |
    +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
-   |          Dmitry Stogov <zeev@zend.com>                               |
+   | Authors: Andi Gutmans <andi@php.net>                                 |
+   |          Zeev Suraski <zeev@php.net>                                 |
+   |          Dmitry Stogov <zeev@php.net>                                |
    +----------------------------------------------------------------------+
 */
-
-/* $Id$ */
 
 #ifndef ZEND_PORTABILITY_H
 #define ZEND_PORTABILITY_H
@@ -56,9 +54,7 @@
 # include <unix.h>
 #endif
 
-#ifdef HAVE_STDARG_H
-# include <stdarg.h>
-#endif
+#include <stdarg.h>
 
 #ifdef HAVE_DLFCN_H
 # include <dlfcn.h>
@@ -72,7 +68,7 @@
 # include <alloca.h>
 #endif
 
-#if defined(ZEND_WIN32)
+#if defined(ZEND_WIN32) && !defined(__clang__)
 #include <intrin.h>
 #endif
 
@@ -401,9 +397,9 @@ char *alloca();
 # define ZEND_FILE_LINE_ORIG_RELAY_C	__zend_orig_filename, __zend_orig_lineno
 # define ZEND_FILE_LINE_ORIG_RELAY_CC	, ZEND_FILE_LINE_ORIG_RELAY_C
 #else
-# define ZEND_FILE_LINE_D
+# define ZEND_FILE_LINE_D				void
 # define ZEND_FILE_LINE_DC
-# define ZEND_FILE_LINE_ORIG_D
+# define ZEND_FILE_LINE_ORIG_D			void
 # define ZEND_FILE_LINE_ORIG_DC
 # define ZEND_FILE_LINE_RELAY_C
 # define ZEND_FILE_LINE_RELAY_CC
@@ -441,6 +437,13 @@ char *alloca();
 #undef MAX
 #define MAX(a, b)  (((a)>(b))?(a):(b))
 #define MIN(a, b)  (((a)<(b))?(a):(b))
+
+/* x86 instructions BT, SHL, SHR don't require masking */
+#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__)) || defined(ZEND_WIN32)
+# define ZEND_BIT_TEST(bits, bit) (((bits)[(bit) / (sizeof((bits)[0])*8)] >> (bit)) & 1)
+#else
+# define ZEND_BIT_TEST(bits, bit) (((bits)[(bit) / (sizeof((bits)[0])*8)] >> ((bit) & (sizeof((bits)[0])*8-1))) & 1)
+#endif
 
 /* We always define a function, even if there's a macro or expression we could
  * alias, so that using it in contexts where we can't make function calls
@@ -538,7 +541,12 @@ static zend_always_inline double _zend_get_nan(void) /* {{{ */
 # define PHP_HAVE_SSE4_2
 # endif
 
-# if PHP_HAVE_AVX2_INSTRUCTIONS && defined(HAVE_IMMINTRIN_H)
+/*
+ * AVX2 support was added in gcc 4.7, but AVX2 intrinsics don't work in
+ * __attribute__((target("avx2"))) functions until gcc 4.9.
+ */
+# if PHP_HAVE_AVX2_INSTRUCTIONS && defined(HAVE_IMMINTRIN_H) && \
+  (defined(__llvm__) || defined(__clang__) || (defined(__GNUC__) && ZEND_GCC_VERSION >= 4009))
 # define PHP_HAVE_AVX2
 # endif
 #endif
@@ -551,7 +559,7 @@ static zend_always_inline double _zend_get_nan(void) /* {{{ */
 # define ZEND_INTRIN_SSSE3_RESOLVER 1
 #endif
 
-#if ZEND_INTRIN_HAVE_IFUNC_TARGET && (ZEND_INTRIN_SSSE3_NATIVE || ZEND_INTRIN_SSSE3_RESOLVER)
+#if ZEND_INTRIN_SSSE3_RESOLVER && ZEND_INTRIN_HAVE_IFUNC_TARGET
 # define ZEND_INTRIN_SSSE3_FUNC_PROTO 1
 #elif ZEND_INTRIN_SSSE3_RESOLVER
 # define ZEND_INTRIN_SSSE3_FUNC_PTR 1
@@ -575,7 +583,7 @@ static zend_always_inline double _zend_get_nan(void) /* {{{ */
 # define ZEND_INTRIN_SSE4_2_RESOLVER 1
 #endif
 
-#if ZEND_INTRIN_HAVE_IFUNC_TARGET && (ZEND_INTRIN_SSE4_2_NATIVE || ZEND_INTRIN_SSE4_2_RESOLVER)
+#if ZEND_INTRIN_SSE4_2_RESOLVER && ZEND_INTRIN_HAVE_IFUNC_TARGET
 # define ZEND_INTRIN_SSE4_2_FUNC_PROTO 1
 #elif ZEND_INTRIN_SSE4_2_RESOLVER
 # define ZEND_INTRIN_SSE4_2_FUNC_PTR 1
@@ -592,14 +600,12 @@ static zend_always_inline double _zend_get_nan(void) /* {{{ */
 #endif
 
 #ifdef __AVX2__
-/* Instructions compiled directly. */
 # define ZEND_INTRIN_AVX2_NATIVE 1
 #elif (defined(HAVE_FUNC_ATTRIBUTE_TARGET) && defined(PHP_HAVE_AVX2)) || defined(ZEND_WIN32)
-/* Function resolved by ifunc or MINIT. */
 # define ZEND_INTRIN_AVX2_RESOLVER 1
 #endif
 
-#if ZEND_INTRIN_HAVE_IFUNC_TARGET && (ZEND_INTRIN_AVX2_NATIVE || ZEND_INTRIN_AVX2_RESOLVER)
+#if ZEND_INTRIN_AVX2_RESOLVER && ZEND_INTRIN_HAVE_IFUNC_TARGET
 # define ZEND_INTRIN_AVX2_FUNC_PROTO 1
 #elif ZEND_INTRIN_AVX2_RESOLVER
 # define ZEND_INTRIN_AVX2_FUNC_PTR 1
@@ -627,6 +633,13 @@ static zend_always_inline double _zend_get_nan(void) /* {{{ */
 
 #define ZEND_SLIDE_TO_ALIGNED(alignment, ptr) (((zend_uintptr_t)(ptr) + ((alignment)-1)) & ~((alignment)-1))
 #define ZEND_SLIDE_TO_ALIGNED16(ptr) ZEND_SLIDE_TO_ALIGNED(Z_UL(16), ptr)
+
+#ifdef ZEND_WIN32
+# define _ZEND_EXPAND_VA(a) a
+# define ZEND_EXPAND_VA(code) _ZEND_EXPAND_VA(code)
+#else
+# define ZEND_EXPAND_VA(code) code
+#endif
 
 #endif /* ZEND_PORTABILITY_H */
 

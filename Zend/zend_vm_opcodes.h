@@ -12,9 +12,9 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@zend.com so we can mail you a copy immediately.              |
    +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
-   |          Dmitry Stogov <dmitry@zend.com>                             |
+   | Authors: Andi Gutmans <andi@php.net>                                 |
+   |          Zeev Suraski <zeev@php.net>                                 |
+   |          Dmitry Stogov <dmitry@php.net>                              |
    +----------------------------------------------------------------------+
 */
 
@@ -218,9 +218,7 @@ END_EXTERN_C()
 #define ZEND_DECLARE_FUNCTION                141
 #define ZEND_YIELD_FROM                      142
 #define ZEND_DECLARE_CONST                   143
-#define ZEND_ADD_INTERFACE                   144
 #define ZEND_DECLARE_INHERITED_CLASS_DELAYED 145
-#define ZEND_VERIFY_ABSTRACT_CLASS           146
 #define ZEND_ASSIGN_DIM                      147
 #define ZEND_ISSET_ISEMPTY_PROP_OBJ          148
 #define ZEND_HANDLE_EXCEPTION                149
@@ -228,8 +226,6 @@ END_EXTERN_C()
 #define ZEND_ASSERT_CHECK                    151
 #define ZEND_JMP_SET                         152
 #define ZEND_DECLARE_LAMBDA_FUNCTION         153
-#define ZEND_ADD_TRAIT                       154
-#define ZEND_BIND_TRAITS                     155
 #define ZEND_SEPARATE                        156
 #define ZEND_FETCH_CLASS_NAME                157
 #define ZEND_CALL_TRAMPOLINE                 158
@@ -273,7 +269,8 @@ END_EXTERN_C()
 #define ZEND_UNSET_CV                        196
 #define ZEND_ISSET_ISEMPTY_CV                197
 #define ZEND_FETCH_LIST_W                    198
+#define ZEND_ARRAY_KEY_EXISTS                199
 
-#define ZEND_VM_LAST_OPCODE                  198
+#define ZEND_VM_LAST_OPCODE                  199
 
 #endif

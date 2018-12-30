@@ -16,7 +16,6 @@
    |         Xinchen Hui <laruence@php.net>                               |
    +----------------------------------------------------------------------+
  */
-/* $Id$ */
 
 #include <string.h>
 
@@ -166,6 +165,7 @@ fail:
 # undef ZEND_INTRIN_SSSE3_FUNC_PTR
 #elif ZEND_INTRIN_AVX2_FUNC_PROTO && ZEND_INTRIN_SSSE3_NATIVE
 # undef ZEND_INTRIN_SSSE3_NATIVE
+# undef ZEND_INTRIN_SSSE3_RESOLVER
 # define ZEND_INTRIN_SSSE3_RESOLVER 1
 # define ZEND_INTRIN_SSSE3_FUNC_PROTO 1
 # undef ZEND_INTRIN_SSSE3_FUNC_DECL
@@ -222,10 +222,12 @@ static void *resolve_base64_encode() {
 		return php_base64_encode_avx2;
 	} else
 # endif
+#if ZEND_INTRIN_SSSE3_FUNC_PROTO
 	if (zend_cpu_supports_ssse3()) {
 		return php_base64_encode_ssse3;
 	}
-	return  php_base64_encode_default;
+#endif
+	return php_base64_encode_default;
 }
 
 static void *resolve_base64_decode() {
@@ -234,10 +236,12 @@ static void *resolve_base64_decode() {
 		return php_base64_decode_ex_avx2;
 	} else
 # endif
+#if ZEND_INTRIN_SSSE3_FUNC_PROTO
 	if (zend_cpu_supports_ssse3()) {
 		return php_base64_decode_ex_ssse3;
 	}
-	return  php_base64_decode_ex_default;
+#endif
+	return php_base64_decode_ex_default;
 }
 # else /* (ZEND_INTRIN_AVX2_FUNC_PROTO || ZEND_INTRIN_SSSE3_FUNC_PROTO) */
 
@@ -252,10 +256,13 @@ PHP_MINIT_FUNCTION(base64_intrin)
 		php_base64_decode_ex = php_base64_decode_ex_avx2;
 	} else
 # endif
+#if ZEND_INTRIN_SSSE3_FUNC_PTR
 	if (zend_cpu_supports_ssse3()) {
 		php_base64_encode = php_base64_encode_ssse3;
 		php_base64_decode_ex = php_base64_decode_ex_ssse3;
-	} else {
+	} else
+#endif
+	{
 		php_base64_encode = php_base64_encode_default;
 		php_base64_decode_ex = php_base64_decode_ex_default;
 	}
@@ -330,6 +337,7 @@ static __m256i php_base64_encode_avx2_translate(__m256i in)
 #endif /* ZEND_INTRIN_AVX2_NATIVE || (ZEND_INTRIN_AVX2_RESOLVER && !ZEND_INTRIN_SSSE3_NATIVE) */
 
 #if ZEND_INTRIN_SSSE3_NATIVE || ZEND_INTRIN_SSSE3_RESOLVER
+
 # if ZEND_INTRIN_SSSE3_RESOLVER && defined(HAVE_FUNC_ATTRIBUTE_TARGET)
 static __m128i php_base64_encode_ssse3_reshuffle(__m128i in) __attribute__((target("ssse3")));
 static __m128i php_base64_encode_ssse3_translate(__m128i in) __attribute__((target("ssse3")));
@@ -388,12 +396,27 @@ static __m128i php_base64_encode_ssse3_translate(__m128i in)
 	/* mask is 0xFF (-1) for range #[1..4] and 0x00 for range #0: */
 	mask = _mm_cmpgt_epi8(in, _mm_set1_epi8(25));
 
-	/* substract -1, so add 1 to indices for range #[1..4], All indices are now correct: */
+	/* subtract -1, so add 1 to indices for range #[1..4], All indices are now correct: */
 	indices = _mm_sub_epi8(indices, mask);
 
 	/* Add offsets to input values: */
 	return _mm_add_epi8(in, _mm_shuffle_epi8(lut, indices));
 }
+
+#define PHP_BASE64_ENCODE_SSSE3_LOOP				\
+	while (length > 15) {							\
+		__m128i s = _mm_loadu_si128((__m128i *)c);	\
+													\
+		s = php_base64_encode_ssse3_reshuffle(s);	\
+													\
+		s = php_base64_encode_ssse3_translate(s);	\
+													\
+		_mm_storeu_si128((__m128i *)o, s);			\
+		c += 12;									\
+		o += 16;									\
+		length -= 12;								\
+	}
+
 #endif /* ZEND_INTRIN_SSSE3_NATIVE || (ZEND_INTRIN_SSSE3_RESOLVER && !ZEND_INTRIN_AVX2_NATIVE) */
 
 #if ZEND_INTRIN_AVX2_NATIVE || ZEND_INTRIN_AVX2_RESOLVER || ZEND_INTRIN_SSSE3_NATIVE || ZEND_INTRIN_SSSE3_RESOLVER
@@ -401,7 +424,7 @@ static __m128i php_base64_encode_ssse3_translate(__m128i in)
 PHPAPI zend_string *php_base64_encode(const unsigned char *str, size_t length)
 # elif ZEND_INTRIN_AVX2_RESOLVER
 zend_string *php_base64_encode_avx2(const unsigned char *str, size_t length)
-# elif ZEND_INTRIN_SSSE3_RESOLVER
+# else /* ZEND_INTRIN_SSSE3_RESOLVER */
 zend_string *php_base64_encode_ssse3(const unsigned char *str, size_t length)
 # endif
 {
@@ -433,18 +456,7 @@ zend_string *php_base64_encode_ssse3(const unsigned char *str, size_t length)
 		}
 	}
 # else
-	while (length > 15) {
-		__m128i s = _mm_loadu_si128((__m128i *)c);
-
-		s = php_base64_encode_ssse3_reshuffle(s);
-
-		s = php_base64_encode_ssse3_translate(s);
-
-		_mm_storeu_si128((__m128i *)o, s);
-		c += 12;
-		o += 16;
-		length -= 12;
-	}
+	PHP_BASE64_ENCODE_SSSE3_LOOP;
 # endif
 
 	o = php_base64_encode_impl(c, length, o);
@@ -463,18 +475,8 @@ zend_string *php_base64_encode_ssse3(const unsigned char *str, size_t length)
 
 	result = zend_string_safe_alloc(((length + 2) / 3), 4 * sizeof(char), 0, 0);
 	o = (unsigned char *)ZSTR_VAL(result);
-	while (length > 15) {
-		__m128i s = _mm_loadu_si128((__m128i *)c);
 
-		s = php_base64_encode_ssse3_reshuffle(s);
-
-		s = php_base64_encode_ssse3_translate(s);
-
-		_mm_storeu_si128((__m128i *)o, s);
-		c += 12;
-		o += 16;
-		length -= 12;
-	}
+	PHP_BASE64_ENCODE_SSSE3_LOOP;
 
 	o = php_base64_encode_impl(c, length, o);
 
@@ -573,6 +575,54 @@ static __m128i php_base64_decode_ssse3_reshuffle(__m128i in)
 	 * HHHHhhhh GGGGGGgg FFffffff EEEEeeee
 	 * DDDDDDdd CCcccccc BBBBbbbb AAAAAAaa */
 }
+
+#define PHP_BASE64_DECODE_SSSE3_LOOP								\
+	while (length > 15 + 6 + 2) {									\
+		__m128i lut_lo, lut_hi, lut_roll;							\
+		__m128i hi_nibbles, lo_nibbles, hi, lo;						\
+		__m128i s = _mm_loadu_si128((__m128i *)c);					\
+																	\
+		lut_lo = _mm_setr_epi8(										\
+				0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,		\
+				0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B, 0x1B, 0x1A);	\
+		lut_hi = _mm_setr_epi8(										\
+				0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08,		\
+				0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10);	\
+		lut_roll = _mm_setr_epi8(									\
+				0,  16,  19,   4, -65, -65, -71, -71,				\
+				0,   0,   0,   0,   0,   0,   0,   0);				\
+																	\
+		hi_nibbles  = _mm_and_si128(								\
+						_mm_srli_epi32(s, 4), _mm_set1_epi8(0x2f));	\
+		lo_nibbles  = _mm_and_si128(s, _mm_set1_epi8(0x2f));		\
+		hi          = _mm_shuffle_epi8(lut_hi, hi_nibbles);			\
+		lo          = _mm_shuffle_epi8(lut_lo, lo_nibbles);			\
+																	\
+																	\
+		if (UNEXPECTED(												\
+			_mm_movemask_epi8(										\
+				_mm_cmpgt_epi8(										\
+					_mm_and_si128(lo, hi), _mm_set1_epi8(0))))) {	\
+			break;													\
+		} else {													\
+			__m128i eq_2f, roll;									\
+																	\
+			eq_2f = _mm_cmpeq_epi8(s, _mm_set1_epi8(0x2f));			\
+			roll = _mm_shuffle_epi8(								\
+					lut_roll, _mm_add_epi8(eq_2f, hi_nibbles));		\
+																	\
+			s = _mm_add_epi8(s, roll);								\
+			s = php_base64_decode_ssse3_reshuffle(s);				\
+																	\
+			_mm_storeu_si128((__m128i *)o, s);						\
+																	\
+			c += 16;												\
+			o += 12;												\
+			outl += 12;												\
+			length -= 16;											\
+		}															\
+	}
+
 #endif
 
 #if ZEND_INTRIN_AVX2_NATIVE || ZEND_INTRIN_AVX2_RESOLVER || ZEND_INTRIN_SSSE3_NATIVE || ZEND_INTRIN_SSSE3_RESOLVER
@@ -644,55 +694,11 @@ zend_string *php_base64_decode_ex_ssse3(const unsigned char *str, size_t length,
 		}
 	}
 # else
-	while (length > 15 + 6 + 2) {
-		__m128i lut_lo, lut_hi, lut_roll;
-		__m128i hi_nibbles, lo_nibbles, hi, lo;
-
-		__m128i s = _mm_loadu_si128((__m128i *)c);
-
-		lut_lo = _mm_setr_epi8(
-				0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-				0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B, 0x1B, 0x1A);
-
-		lut_hi = _mm_setr_epi8(
-				0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08,
-				0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10);
-
-		lut_roll = _mm_setr_epi8(
-				0,  16,  19,   4, -65, -65, -71, -71,
-				0,   0,   0,   0,   0,   0,   0,   0);
-
-		hi_nibbles  = _mm_and_si128(_mm_srli_epi32(s, 4), _mm_set1_epi8(0x2f));
-		lo_nibbles  = _mm_and_si128(s, _mm_set1_epi8(0x2f));
-		hi          = _mm_shuffle_epi8(lut_hi, hi_nibbles);
-		lo          = _mm_shuffle_epi8(lut_lo, lo_nibbles);
-
-		/* Check for invalid input: if any "and" values from lo and hi are not zero,
-		   fall back on bytewise code to do error checking and reporting: */
-		if (UNEXPECTED(_mm_movemask_epi8(_mm_cmpgt_epi8(_mm_and_si128(lo, hi), _mm_set1_epi8(0))) != 0)) {
-			break;
-		} else {
-			__m128i eq_2f, roll;
-
-			eq_2f = _mm_cmpeq_epi8(s, _mm_set1_epi8(0x2f));
-			roll = _mm_shuffle_epi8(lut_roll, _mm_add_epi8(eq_2f, hi_nibbles));
-
-			s = _mm_add_epi8(s, roll);
-
-			s = php_base64_decode_ssse3_reshuffle(s);
-
-			_mm_storeu_si128((__m128i *)o, s);
-
-			c += 16;
-			o += 12;
-			outl += 12;
-			length -= 16;
-		}
-	}
+	PHP_BASE64_DECODE_SSSE3_LOOP;
 # endif
 
 	if (!php_base64_decode_impl(c, length, (unsigned char*)ZSTR_VAL(result), &outl, strict)) {
-		zend_string_free(result);
+		zend_string_efree(result);
 		return NULL;
 	}
 
@@ -712,54 +718,10 @@ zend_string *php_base64_decode_ex_ssse3(const unsigned char *str, size_t length,
 	result = zend_string_alloc(length, 0);
 	o = (unsigned char *)ZSTR_VAL(result);
 
-	while (length > 15 + 2) {
-		__m128i lut_lo, lut_hi, lut_roll;
-		__m128i hi_nibbles, lo_nibbles, hi, lo;
-
-		__m128i s = _mm_loadu_si128((__m128i *)c);
-
-		lut_lo = _mm_setr_epi8(
-				0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-				0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B, 0x1B, 0x1A);
-
-		lut_hi = _mm_setr_epi8(
-				0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08,
-				0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10);
-
-		lut_roll = _mm_setr_epi8(
-				0,  16,  19,   4, -65, -65, -71, -71,
-				0,   0,   0,   0,   0,   0,   0,   0);
-
-		hi_nibbles  = _mm_and_si128(_mm_srli_epi32(s, 4), _mm_set1_epi8(0x2f));
-		lo_nibbles  = _mm_and_si128(s, _mm_set1_epi8(0x2f));
-		hi          = _mm_shuffle_epi8(lut_hi, hi_nibbles);
-		lo          = _mm_shuffle_epi8(lut_lo, lo_nibbles);
-
-		/* Check for invalid input: if any "and" values from lo and hi are not zero,
-		   fall back on bytewise code to do error checking and reporting: */
-		if (UNEXPECTED(_mm_movemask_epi8(_mm_cmpgt_epi8(_mm_and_si128(lo, hi), _mm_set1_epi8(0))) != 0)) {
-			break;
-		} else {
-			__m128i eq_2f, roll;
-
-			eq_2f = _mm_cmpeq_epi8(s, _mm_set1_epi8(0x2f));
-			roll = _mm_shuffle_epi8(lut_roll, _mm_add_epi8(eq_2f, hi_nibbles));
-
-			s = _mm_add_epi8(s, roll);
-
-			s = php_base64_decode_ssse3_reshuffle(s);
-
-			_mm_storeu_si128((__m128i *)o, s);
-
-			c += 16;
-			o += 12;
-			outl += 12;
-			length -= 16;
-		}
-	}
+	PHP_BASE64_DECODE_SSSE3_LOOP;
 
 	if (!php_base64_decode_impl(c, length, (unsigned char*)ZSTR_VAL(result), &outl, strict)) {
-		zend_string_free(result);
+		zend_string_efree(result);
 		return NULL;
 	}
 
@@ -804,7 +766,7 @@ PHPAPI zend_string *php_base64_decode_ex(const unsigned char *str, size_t length
 	result = zend_string_alloc(length, 0);
 
 	if (!php_base64_decode_impl(str, length, (unsigned char*)ZSTR_VAL(result), &outl, strict)) {
-		zend_string_free(result);
+		zend_string_efree(result);
 		return NULL;
 	}
 
@@ -828,11 +790,7 @@ PHP_FUNCTION(base64_encode)
 	ZEND_PARSE_PARAMETERS_END();
 
 	result = php_base64_encode((unsigned char*)str, str_len);
-	if (result != NULL) {
-		RETURN_STR(result);
-	} else {
-		RETURN_FALSE;
-	}
+	RETURN_STR(result);
 }
 /* }}} */
 

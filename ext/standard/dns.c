@@ -18,8 +18,6 @@
    +----------------------------------------------------------------------+
  */
 
-/* $Id$ */
-
 /* {{{ includes */
 #include "php.h"
 #include "php_network.h"
@@ -357,7 +355,7 @@ PHP_FUNCTION(dns_check_record)
 	u_char ans[MAXPACKET];
 	char *hostname, *rectype = NULL;
 	size_t hostname_len, rectype_len = 0;
-	int type = T_MX, i;
+	int type = DNS_T_MX, i;
 #if defined(HAVE_DNS_SEARCH)
 	struct sockaddr_storage from;
 	uint32_t fromsize = sizeof(from);
@@ -379,7 +377,7 @@ PHP_FUNCTION(dns_check_record)
 	}
 
 	if (rectype) {
-		if (!strcasecmp("A",     rectype)) type = T_A;
+		if (!strcasecmp("A",     rectype)) type = DNS_T_A;
 		else if (!strcasecmp("NS",    rectype)) type = DNS_T_NS;
 		else if (!strcasecmp("MX",    rectype)) type = DNS_T_MX;
 		else if (!strcasecmp("PTR",   rectype)) type = DNS_T_PTR;
@@ -456,7 +454,7 @@ static u_char *php_parserr(u_char *cp, u_char *end, querybuf *answer, int type_t
 	GETLONG(ttl, cp);
 	GETSHORT(dlen, cp);
 	CHECKCP(dlen);
-	if (type_to_fetch != T_ANY && type != type_to_fetch) {
+	if (type_to_fetch != DNS_T_ANY && type != type_to_fetch) {
 		cp += dlen;
 		return cp;
 	}
@@ -921,13 +919,13 @@ PHP_FUNCTION(dns_get_record)
 #if defined(HAVE_DNS_SEARCH)
 			handle = dns_open(NULL);
 			if (handle == NULL) {
-				zval_dtor(return_value);
+				zend_array_destroy(Z_ARR_P(return_value));
 				RETURN_FALSE;
 			}
 #elif defined(HAVE_RES_NSEARCH)
 		    memset(&state, 0, sizeof(state));
 		    if (res_ninit(handle)) {
-		    	zval_dtor(return_value);
+		    	zend_array_destroy(Z_ARR_P(return_value));
 				RETURN_FALSE;
 			}
 #else
@@ -954,7 +952,7 @@ PHP_FUNCTION(dns_get_record)
 					default:
 						php_error_docref(NULL, E_WARNING, "DNS Query failed");
 				}
-				zval_dtor(return_value);
+				zend_array_destroy(Z_ARR_P(return_value));
 				RETURN_FALSE;
 			}
 
@@ -971,7 +969,7 @@ PHP_FUNCTION(dns_get_record)
 				n = dn_skipname(cp, end);
 				if (n < 0) {
 					php_error_docref(NULL, E_WARNING, "Unable to parse DNS data received");
-					zval_dtor(return_value);
+					zend_array_destroy(Z_ARR_P(return_value));
 					php_dns_free_handle(handle);
 					RETURN_FALSE;
 				}

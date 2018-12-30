@@ -12,14 +12,12 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@zend.com so we can mail you a copy immediately.              |
    +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
+   | Authors: Andi Gutmans <andi@php.net>                                 |
+   |          Zeev Suraski <zeev@php.net>                                 |
    |          Andrei Zmievski <andrei@php.net>                            |
-   |          Dmitry Stogov <dmitry@zend.com>                             |
+   |          Dmitry Stogov <dmitry@php.net>                              |
    +----------------------------------------------------------------------+
 */
-
-/* $Id$ */
 
 #ifndef ZEND_API_H
 #define ZEND_API_H
@@ -185,18 +183,16 @@ typedef struct _zend_fcall_info_cache {
 #endif
 
 #define INIT_CLASS_ENTRY(class_container, class_name, functions) \
-	INIT_OVERLOADED_CLASS_ENTRY(class_container, class_name, functions, NULL, NULL, NULL)
+	INIT_CLASS_ENTRY_EX(class_container, class_name, sizeof(class_name)-1, functions)
 
 #define INIT_CLASS_ENTRY_EX(class_container, class_name, class_name_len, functions) \
-	INIT_OVERLOADED_CLASS_ENTRY_EX(class_container, class_name, class_name_len, functions, NULL, NULL, NULL, NULL, NULL)
-
-#define INIT_OVERLOADED_CLASS_ENTRY_EX(class_container, class_name, class_name_len, functions, handle_fcall, handle_propget, handle_propset, handle_propunset, handle_propisset) \
 	{															\
+		memset(&class_container, 0, sizeof(zend_class_entry)); \
 		class_container.name = zend_string_init_interned(class_name, class_name_len, 1); \
-		INIT_CLASS_ENTRY_INIT_METHODS(class_container, functions, handle_fcall, handle_propget, handle_propset, handle_propunset, handle_propisset) \
+		class_container.info.internal.builtin_functions = functions;	\
 	}
 
-#define INIT_CLASS_ENTRY_INIT_METHODS(class_container, functions, handle_fcall, handle_propget, handle_propset, handle_propunset, handle_propisset) \
+#define INIT_CLASS_ENTRY_INIT_METHODS(class_container, functions) \
 	{															\
 		class_container.constructor = NULL;						\
 		class_container.destructor = NULL;						\
@@ -204,46 +200,36 @@ typedef struct _zend_fcall_info_cache {
 		class_container.serialize = NULL;						\
 		class_container.unserialize = NULL;						\
 		class_container.create_object = NULL;					\
-		class_container.interface_gets_implemented = NULL;		\
 		class_container.get_static_method = NULL;				\
-		class_container.__call = handle_fcall;					\
+		class_container.__call = NULL;							\
 		class_container.__callstatic = NULL;					\
 		class_container.__tostring = NULL;						\
-		class_container.__get = handle_propget;					\
-		class_container.__set = handle_propset;					\
-		class_container.__unset = handle_propunset;				\
-		class_container.__isset = handle_propisset;				\
-		class_container.__debugInfo = NULL;					\
+		class_container.__get = NULL;							\
+		class_container.__set = NULL;							\
+		class_container.__unset = NULL;							\
+		class_container.__isset = NULL;							\
+		class_container.__debugInfo = NULL;						\
 		class_container.serialize_func = NULL;					\
 		class_container.unserialize_func = NULL;				\
 		class_container.parent = NULL;							\
 		class_container.num_interfaces = 0;						\
-		class_container.traits = NULL;							\
+		class_container.trait_names = NULL;						\
 		class_container.num_traits = 0;							\
 		class_container.trait_aliases = NULL;					\
 		class_container.trait_precedences = NULL;				\
 		class_container.interfaces = NULL;						\
 		class_container.get_iterator = NULL;					\
-		class_container.iterator_funcs.funcs = NULL;			\
+		class_container.iterator_funcs_ptr = NULL;				\
 		class_container.info.internal.module = NULL;			\
 		class_container.info.internal.builtin_functions = functions;	\
 	}
 
-#define INIT_OVERLOADED_CLASS_ENTRY(class_container, class_name, functions, handle_fcall, handle_propget, handle_propset) \
-	INIT_OVERLOADED_CLASS_ENTRY_EX(class_container, class_name, sizeof(class_name)-1, functions, handle_fcall, handle_propget, handle_propset, NULL, NULL)
 
 #define INIT_NS_CLASS_ENTRY(class_container, ns, class_name, functions) \
 	INIT_CLASS_ENTRY(class_container, ZEND_NS_NAME(ns, class_name), functions)
-#define INIT_OVERLOADED_NS_CLASS_ENTRY_EX(class_container, ns, class_name, functions, handle_fcall, handle_propget, handle_propset, handle_propunset, handle_propisset) \
-	INIT_OVERLOADED_CLASS_ENTRY_EX(class_container, ZEND_NS_NAME(ns, class_name), sizeof(ZEND_NS_NAME(ns, class_name))-1, functions, handle_fcall, handle_propget, handle_propset, handle_propunset, handle_propisset)
-#define INIT_OVERLOADED_NS_CLASS_ENTRY(class_container, ns, class_name, functions, handle_fcall, handle_propget, handle_propset) \
-	INIT_OVERLOADED_CLASS_ENTRY(class_container, ZEND_NS_NAME(ns, class_name), functions, handle_fcall, handle_propget, handle_propset)
 
-#ifdef ZTS
-#	define CE_STATIC_MEMBERS(ce) (((ce)->type==ZEND_USER_CLASS)?(ce)->static_members_table:CG(static_members_table)[(zend_intptr_t)(ce)->static_members_table])
-#else
-#	define CE_STATIC_MEMBERS(ce) ((ce)->static_members_table)
-#endif
+#define CE_STATIC_MEMBERS(ce) \
+	((zval*)ZEND_MAP_PTR_GET((ce)->static_members_table))
 
 #define ZEND_FCI_INITIALIZED(fci) ((fci).size != 0)
 
@@ -354,6 +340,7 @@ ZEND_API void zend_update_property_string(zend_class_entry *scope, zval *object,
 ZEND_API void zend_update_property_stringl(zend_class_entry *scope, zval *object, const char *name, size_t name_length, const char *value, size_t value_length);
 ZEND_API void zend_unset_property(zend_class_entry *scope, zval *object, const char *name, size_t name_length);
 
+ZEND_API int zend_update_static_property_ex(zend_class_entry *scope, zend_string *name, zval *value);
 ZEND_API int zend_update_static_property(zend_class_entry *scope, const char *name, size_t name_length, zval *value);
 ZEND_API int zend_update_static_property_null(zend_class_entry *scope, const char *name, size_t name_length);
 ZEND_API int zend_update_static_property_bool(zend_class_entry *scope, const char *name, size_t name_length, zend_long value);
@@ -365,11 +352,14 @@ ZEND_API int zend_update_static_property_stringl(zend_class_entry *scope, const 
 ZEND_API zval *zend_read_property_ex(zend_class_entry *scope, zval *object, zend_string *name, zend_bool silent, zval *rv);
 ZEND_API zval *zend_read_property(zend_class_entry *scope, zval *object, const char *name, size_t name_length, zend_bool silent, zval *rv);
 
+ZEND_API zval *zend_read_static_property_ex(zend_class_entry *scope, zend_string *name, zend_bool silent);
 ZEND_API zval *zend_read_static_property(zend_class_entry *scope, const char *name, size_t name_length, zend_bool silent);
 
 ZEND_API char *zend_get_type_by_const(int type);
 
-#define getThis()							((Z_TYPE(EX(This)) == IS_OBJECT) ? &EX(This) : NULL)
+#define ZEND_THIS                           (&EX(This))
+
+#define getThis()							((Z_TYPE_P(ZEND_THIS) == IS_OBJECT) ? ZEND_THIS : NULL)
 #define ZEND_IS_METHOD_CALL()				(EX(func)->common.scope != NULL)
 
 #define WRONG_PARAM_COUNT					ZEND_WRONG_PARAM_COUNT()
@@ -385,12 +375,9 @@ ZEND_API char *zend_get_type_by_const(int type);
 
 #define array_init(arg)				ZVAL_ARR((arg), zend_new_array(0))
 #define array_init_size(arg, size)	ZVAL_ARR((arg), zend_new_array(size))
-#define object_init(arg)		_object_init((arg) ZEND_FILE_LINE_CC)
-#define object_init_ex(arg, ce)	_object_init_ex((arg), (ce) ZEND_FILE_LINE_CC)
-#define object_and_properties_init(arg, ce, properties)	_object_and_properties_init((arg), (ce), (properties) ZEND_FILE_LINE_CC)
-ZEND_API int _object_init(zval *arg ZEND_FILE_LINE_DC);
-ZEND_API int _object_init_ex(zval *arg, zend_class_entry *ce ZEND_FILE_LINE_DC);
-ZEND_API int _object_and_properties_init(zval *arg, zend_class_entry *ce, HashTable *properties ZEND_FILE_LINE_DC);
+ZEND_API int object_init(zval *arg);
+ZEND_API int object_init_ex(zval *arg, zend_class_entry *ce);
+ZEND_API int object_and_properties_init(zval *arg, zend_class_entry *ce, HashTable *properties);
 ZEND_API void object_properties_init(zend_object *object, zend_class_entry *class_type);
 ZEND_API void object_properties_init_ex(zend_object *object, HashTable *properties);
 ZEND_API void object_properties_load(zend_object *object, HashTable *properties);
@@ -417,12 +404,6 @@ ZEND_API int add_assoc_zval_ex(zval *arg, const char *key, size_t key_len, zval 
 #define add_assoc_stringl(__arg, __key, __str, __length) add_assoc_stringl_ex(__arg, __key, strlen(__key), __str, __length)
 #define add_assoc_zval(__arg, __key, __value) add_assoc_zval_ex(__arg, __key, strlen(__key), __value)
 
-/* unset() functions are only supported for legacy modules and null() functions should be used */
-#define add_assoc_unset(__arg, __key) add_assoc_null_ex(__arg, __key, strlen(__key))
-#define add_index_unset(__arg, __key) add_index_null(__arg, __key)
-#define add_next_index_unset(__arg) add_next_index_null(__arg)
-#define add_property_unset(__arg, __key) add_property_null(__arg, __key)
-
 ZEND_API int add_index_long(zval *arg, zend_ulong idx, zend_long n);
 ZEND_API int add_index_null(zval *arg, zend_ulong idx);
 ZEND_API int add_index_bool(zval *arg, zend_ulong idx, int b);
@@ -431,7 +412,9 @@ ZEND_API int add_index_double(zval *arg, zend_ulong idx, double d);
 ZEND_API int add_index_str(zval *arg, zend_ulong idx, zend_string *str);
 ZEND_API int add_index_string(zval *arg, zend_ulong idx, const char *str);
 ZEND_API int add_index_stringl(zval *arg, zend_ulong idx, const char *str, size_t length);
-ZEND_API int add_index_zval(zval *arg, zend_ulong index, zval *value);
+
+#define add_index_zval(arg, index, value) \
+	(zend_hash_index_update(Z_ARRVAL_P(arg), index, value) ? SUCCESS : FAILURE)
 
 ZEND_API int add_next_index_long(zval *arg, zend_long n);
 ZEND_API int add_next_index_null(zval *arg);
@@ -441,19 +424,9 @@ ZEND_API int add_next_index_double(zval *arg, double d);
 ZEND_API int add_next_index_str(zval *arg, zend_string *str);
 ZEND_API int add_next_index_string(zval *arg, const char *str);
 ZEND_API int add_next_index_stringl(zval *arg, const char *str, size_t length);
-ZEND_API int add_next_index_zval(zval *arg, zval *value);
 
-ZEND_API zval *add_get_assoc_string_ex(zval *arg, const char *key, uint32_t key_len, const char *str);
-ZEND_API zval *add_get_assoc_stringl_ex(zval *arg, const char *key, uint32_t key_len, const char *str, size_t length);
-
-#define add_get_assoc_string(__arg, __key, __str) add_get_assoc_string_ex(__arg, __key, strlen(__key), __str)
-#define add_get_assoc_stringl(__arg, __key, __str, __length) add_get_assoc_stringl_ex(__arg, __key, strlen(__key), __str, __length)
-
-ZEND_API zval *add_get_index_long(zval *arg, zend_ulong idx, zend_long l);
-ZEND_API zval *add_get_index_double(zval *arg, zend_ulong idx, double d);
-ZEND_API zval *add_get_index_str(zval *arg, zend_ulong index, zend_string *str);
-ZEND_API zval *add_get_index_string(zval *arg, zend_ulong idx, const char *str);
-ZEND_API zval *add_get_index_stringl(zval *arg, zend_ulong idx, const char *str, size_t length);
+#define add_next_index_zval(arg, value) \
+	(zend_hash_next_index_insert(Z_ARRVAL_P(arg), value) ? SUCCESS : FAILURE)
 
 ZEND_API int array_set_zval_key(HashTable *ht, zval *key, zval *value);
 
@@ -562,7 +535,7 @@ ZEND_API const char *zend_get_object_type(const zend_class_entry *ce);
 
 ZEND_API zend_bool zend_is_iterable(zval *iterable);
 
-#define add_method(arg, key, method)	add_assoc_function((arg), (key), (method))
+ZEND_API zend_bool zend_is_countable(zval *countable);
 
 ZEND_API ZEND_FUNCTION(display_disabled_function);
 ZEND_API ZEND_FUNCTION(display_disabled_class);
@@ -813,7 +786,9 @@ ZEND_API ZEND_COLD void ZEND_FASTCALL zend_wrong_callback_exception(int num, cha
 	_real_arg++; \
 	_arg = _real_arg; \
 	if (deref) { \
-		ZVAL_DEREF(_arg); \
+		if (EXPECTED(Z_ISREF_P(_arg))) { \
+			_arg = Z_REFVAL_P(_arg); \
+		} \
 	} \
 	if (separate) { \
 		SEPARATE_ZVAL_NOREF(_arg); \

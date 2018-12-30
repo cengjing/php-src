@@ -16,8 +16,6 @@
    +----------------------------------------------------------------------+
  */
 
-/* $Id$ */
-
 /* Infrastructure for working with persistent COM objects.
  * Implements: IStream* wrapper for PHP streams.
  * TODO: Magic __wakeup and __sleep handlers for serialization
@@ -645,7 +643,7 @@ CPH_METHOD(SaveToStream)
 }
 /* }}} */
 
-/* {{{ proto int COMPersistHelper::__construct([object com_object])
+/* {{{ proto COMPersistHelper::__construct([object com_object])
    Creates a persistence helper object, usually associated with a com_object */
 CPH_METHOD(__construct)
 {
@@ -753,7 +751,7 @@ int php_com_persist_minit(INIT_FUNC_ARGS)
 {
 	zend_class_entry ce;
 
-	memcpy(&helper_handlers, zend_get_std_object_handlers(), sizeof(helper_handlers));
+	memcpy(&helper_handlers, &std_object_handlers, sizeof(helper_handlers));
 	helper_handlers.free_obj = helper_free_storage;
 	helper_handlers.clone_obj = helper_clone;
 

@@ -14,7 +14,6 @@
 #  | Author: Wez Furlong <wez@thebrainroom.com>                           |
 #  +----------------------------------------------------------------------+
 #
-# $Id$
 # This is the makefile template for the win32 build
 
 CC="$(PHP_CL)"
@@ -25,15 +24,29 @@ RE2C="$(RE2C)"
 PGOMGR="$(PGOMGR)"
 PHP_BUILD=$(PHP_BUILD)
 
+!if "$(PHP_SIMD_SCALE)" == ""
+SIMD_SUFFIX=
+!else
+!if "$(PHP_SIMD_SCALE)" == "SSE2"
+SIMD_SUFFIX=
+!else
+SIMD_SUFFIX=-$(PHP_SIMD_SCALE)
+!endif
+!endif
+
+!if "$(PKG_SUFFIX)" != ""
+PKG_SUFFIX_PART=-$(PKG_SUFFIX)
+!endif
+
 MCFILE=$(BUILD_DIR)\wsyslog.rc
-BUILD_DIR_DEV_NAME=php-$(PHP_VERSION_STRING)-devel-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)
+BUILD_DIR_DEV_NAME=php-$(PHP_VERSION_STRING)-devel-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART)
 BUILD_DIR_DEV=$(BUILD_DIR)\$(BUILD_DIR_DEV_NAME)
 
-DIST_ZIP_SNAP=php-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE).zip
-DIST_ZIP_PECL=pecl-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE).zip
-DIST_ZIP_DEV_PACK=php-devel-pack-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE).zip
-DIST_ZIP_TEST_PACK=php-test-pack-$(PHP_VERSION_STRING).zip
-DIST_ZIP_DEBUG_PACK=php-debug-pack-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE).zip
+DIST_ZIP_SNAP=php-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART).zip
+DIST_ZIP_PECL=pecl-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART).zip
+DIST_ZIP_DEV_PACK=php-devel-pack-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART).zip
+DIST_ZIP_TEST_PACK=php-test-pack-$(PHP_VERSION_STRING)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART).zip
+DIST_ZIP_DEBUG_PACK=php-debug-pack-$(PHP_VERSION_STRING)$(PHP_ZTS_ARCHIVE_POSTFIX)-Win32-$(PHP_COMPILER_SHORT)-$(PHP_ARCHITECTURE)$(SIMD_SUFFIX)$(PKG_SUFFIX_PART).zip
 
 !if "$(DEBUGGER)" == "1"
 DEBUGGER_CMD=devenv
@@ -74,14 +87,14 @@ Zend\zend_language_parser.c Zend\zend_language_parser.h: Zend\zend_language_pars
 
 sapi\phpdbg\phpdbg_parser.c sapi\phpdbg\phpdbg_parser.h: sapi\phpdbg\phpdbg_parser.y
 	$(BISON) --output=sapi/phpdbg/phpdbg_parser.c -v -d -p phpdbg_ sapi/phpdbg/phpdbg_parser.y
-	
+
 !if $(RE2C) != ""
 Zend\zend_ini_scanner.c: Zend\zend_ini_scanner.l
 	$(RE2C) $(RE2C_FLAGS) --no-generation-date --case-inverted -cbdFt Zend/zend_ini_scanner_defs.h -oZend/zend_ini_scanner.c Zend/zend_ini_scanner.l
 
 Zend\zend_language_scanner.c: Zend\zend_language_scanner.l
 	$(RE2C) $(RE2C_FLAGS) --no-generation-date --case-inverted -cbdFt Zend/zend_language_scanner_defs.h -oZend/zend_language_scanner.c Zend/zend_language_scanner.l
-	
+
 sapi\phpdbg\phpdbg_lexer.c: sapi\phpdbg\phpdbg_lexer.l
 	$(RE2C) $(RE2C_FLAGS) --no-generation-date -cbdFo sapi/phpdbg/phpdbg_lexer.c sapi/phpdbg/phpdbg_lexer.l
 !endif
@@ -134,7 +147,7 @@ $(BUILD_DIR) $(BUILD_DIRS_SUB) $(BUILD_DIR_DEV):
 	@for %D in ($(BUILD_DIRS_SUB)) do @if not exist %D @mkdir %D > NUL
 	@if not exist $(BUILD_DIR_DEV) @mkdir $(BUILD_DIR_DEV) > NUL
 	@cd "$(PHP_SRC_DIR)"
-	
+
 
 clean-sapi:
 	@echo Cleaning SAPI
@@ -252,4 +265,3 @@ really-install:
 	@echo Registering event source with syslog (requires admin rights)
 	@echo It's okay for this step to fail:
 	-$(PHP_PREFIX)\php.exe -n -dextension_dir=$(PHP_PREFIX) win32/build/registersyslog.php $(PHP_PREFIX)\$(PHPDLL)
-

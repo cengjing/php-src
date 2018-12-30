@@ -12,13 +12,11 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@zend.com so we can mail you a copy immediately.              |
    +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
-   |          Dmitry Stogov <dmitry@zend.com>                             |
+   | Authors: Andi Gutmans <andi@php.net>                                 |
+   |          Zeev Suraski <zeev@php.net>                                 |
+   |          Dmitry Stogov <dmitry@php.net>                              |
    +----------------------------------------------------------------------+
 */
-
-/* $Id$ */
 
 #include "zend.h"
 #include "zend_globals.h"
@@ -27,7 +25,7 @@
 #include "zend_interfaces.h"
 #include "zend_exceptions.h"
 
-ZEND_API void ZEND_FASTCALL zend_object_std_init(zend_object *object, zend_class_entry *ce)
+static zend_always_inline void _zend_object_std_init(zend_object *object, zend_class_entry *ce)
 {
 	GC_SET_REFCOUNT(object, 1);
 	GC_TYPE_INFO(object) = IS_OBJECT | (GC_COLLECTABLE << GC_FLAGS_SHIFT);
@@ -35,9 +33,13 @@ ZEND_API void ZEND_FASTCALL zend_object_std_init(zend_object *object, zend_class
 	object->properties = NULL;
 	zend_objects_store_put(object);
 	if (UNEXPECTED(ce->ce_flags & ZEND_ACC_USE_GUARDS)) {
-		OBJ_FLAGS(object) |= IS_OBJ_USE_GUARDS;
 		ZVAL_UNDEF(object->properties_table + object->ce->default_properties_count);
 	}
+}
+
+ZEND_API void ZEND_FASTCALL zend_object_std_init(zend_object *object, zend_class_entry *ce)
+{
+	_zend_object_std_init(object, ce);
 }
 
 ZEND_API void zend_object_std_dtor(zend_object *object)
@@ -55,17 +57,16 @@ ZEND_API void zend_object_std_dtor(zend_object *object)
 	if (EXPECTED(object->ce->default_properties_count)) {
 		end = p + object->ce->default_properties_count;
 		do {
-			i_zval_ptr_dtor(p ZEND_FILE_LINE_CC);
+			i_zval_ptr_dtor(p);
 			p++;
 		} while (p != end);
 	}
-	if (UNEXPECTED(OBJ_FLAGS(object) & IS_OBJ_HAS_GUARDS)) {
+	if (UNEXPECTED(object->ce->ce_flags & ZEND_ACC_USE_GUARDS)) {
 		if (EXPECTED(Z_TYPE_P(p) == IS_STRING)) {
-			zend_string_release(Z_STR_P(p));
-		} else {
+			zval_ptr_dtor_str(p);
+		} else if (Z_TYPE_P(p) == IS_ARRAY) {
 			HashTable *guards;
 
-			ZEND_ASSERT(Z_TYPE_P(p) == IS_ARRAY);
 			guards = Z_ARRVAL_P(p);
 			ZEND_ASSERT(guards != NULL);
 			zend_hash_destroy(guards);
@@ -80,8 +81,10 @@ ZEND_API void zend_objects_destroy_object(zend_object *object)
 
 	if (destructor) {
 		zend_object *old_exception;
-		zval obj;
 		zend_class_entry *orig_fake_scope;
+		zend_fcall_info fci;
+		zend_fcall_info_cache fcic;
+		zval ret;
 
 		if (destructor->op_array.fn_flags & (ZEND_ACC_PRIVATE|ZEND_ACC_PROTECTED)) {
 			if (destructor->op_array.fn_flags & ZEND_ACC_PRIVATE) {
@@ -126,7 +129,6 @@ ZEND_API void zend_objects_destroy_object(zend_object *object)
 		}
 
 		GC_ADDREF(object);
-		ZVAL_OBJ(&obj, object);
 
 		/* Make sure that destructors are protected from previously thrown exceptions.
 		 * For example, if an exception was thrown in a function and when the function's
@@ -143,7 +145,24 @@ ZEND_API void zend_objects_destroy_object(zend_object *object)
 		}
 		orig_fake_scope = EG(fake_scope);
 		EG(fake_scope) = NULL;
-		zend_call_method_with_0_params(&obj, object->ce, &destructor, ZEND_DESTRUCTOR_FUNC_NAME, NULL);
+
+		ZVAL_UNDEF(&ret);
+
+		fci.size = sizeof(fci);
+		fci.object = object;
+		fci.retval = &ret;
+		fci.param_count = 0;
+		fci.params = NULL;
+		fci.no_separation = 1;
+		ZVAL_UNDEF(&fci.function_name); /* Unused */
+
+		fcic.function_handler = destructor;
+		fcic.called_scope = object->ce;
+		fcic.object = object;
+
+		zend_call_function(&fci, &fcic);
+		zval_ptr_dtor(&ret);
+
 		if (old_exception) {
 			if (EG(exception)) {
 				zend_exception_set_previous(EG(exception), old_exception);
@@ -151,7 +170,7 @@ ZEND_API void zend_objects_destroy_object(zend_object *object)
 				EG(exception) = old_exception;
 			}
 		}
-		zval_ptr_dtor(&obj);
+		OBJ_RELEASE(object);
 		EG(fake_scope) = orig_fake_scope;
 	}
 }
@@ -160,7 +179,7 @@ ZEND_API zend_object* ZEND_FASTCALL zend_objects_new(zend_class_entry *ce)
 {
 	zend_object *object = emalloc(sizeof(zend_object) + zend_object_properties_size(ce));
 
-	zend_object_std_init(object, ce);
+	_zend_object_std_init(object, ce);
 	object->handlers = &std_object_handlers;
 	return object;
 }
@@ -173,7 +192,7 @@ ZEND_API void ZEND_FASTCALL zend_objects_clone_members(zend_object *new_object, 
 		zval *end = src + old_object->ce->default_properties_count;
 
 		do {
-			i_zval_ptr_dtor(dst ZEND_FILE_LINE_CC);
+			i_zval_ptr_dtor(dst);
 			ZVAL_COPY_VALUE(dst, src);
 			zval_add_ref(dst);
 			src++;
@@ -198,7 +217,7 @@ ZEND_API void ZEND_FASTCALL zend_objects_clone_members(zend_object *new_object, 
 
 		if (!new_object->properties) {
 			new_object->properties = zend_new_array(zend_hash_num_elements(old_object->properties));
-			zend_hash_real_init(new_object->properties, 0);
+			zend_hash_real_init_mixed(new_object->properties);
 		} else {
 			zend_hash_extend(new_object->properties, new_object->properties->nNumUsed + zend_hash_num_elements(old_object->properties), 0);
 		}
@@ -222,12 +241,29 @@ ZEND_API void ZEND_FASTCALL zend_objects_clone_members(zend_object *new_object, 
 	}
 
 	if (old_object->ce->clone) {
-		zval new_obj;
+		zend_fcall_info fci;
+		zend_fcall_info_cache fcic;
+		zval ret;
 
-		ZVAL_OBJ(&new_obj, new_object);
-		Z_ADDREF(new_obj);
-		zend_call_method_with_0_params(&new_obj, old_object->ce, &old_object->ce->clone, ZEND_CLONE_FUNC_NAME, NULL);
-		zval_ptr_dtor(&new_obj);
+		GC_ADDREF(new_object);
+
+		ZVAL_UNDEF(&ret);
+
+		fci.size = sizeof(fci);
+		fci.object = new_object;
+		fci.retval = &ret;
+		fci.param_count = 0;
+		fci.params = NULL;
+		fci.no_separation = 1;
+		ZVAL_UNDEF(&fci.function_name); /* Unused */
+
+		fcic.function_handler = new_object->ce->clone;
+		fcic.called_scope = new_object->ce;
+		fcic.object = new_object;
+
+		zend_call_function(&fci, &fcic);
+		zval_ptr_dtor(&ret);
+		OBJ_RELEASE(new_object);
 	}
 }
 

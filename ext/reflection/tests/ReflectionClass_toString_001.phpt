@@ -13,8 +13,8 @@ Class [ <internal:Reflection> class ReflectionClass implements Reflector ] {
 
   - Constants [3] {
     Constant [ public int IS_IMPLICIT_ABSTRACT ] { 16 }
-    Constant [ public int IS_EXPLICIT_ABSTRACT ] { 32 }
-    Constant [ public int IS_FINAL ] { 4 }
+    Constant [ public int IS_EXPLICIT_ABSTRACT ] { 64 }
+    Constant [ public int IS_FINAL ] { 32 }
   }
 
   - Static properties [0] {
@@ -34,13 +34,7 @@ Class [ <internal:Reflection> class ReflectionClass implements Reflector ] {
     Property [ <default> public $name ]
   }
 
-  - Methods [53] {
-    Method [ <internal:Reflection> final private method __clone ] {
-
-      - Parameters [0] {
-      }
-    }
-
+  - Methods [52] {
     Method [ <internal:Reflection, ctor> public method __construct ] {
 
       - Parameters [1] {

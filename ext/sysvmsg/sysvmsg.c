@@ -16,8 +16,6 @@
   +----------------------------------------------------------------------+
 */
 
-/* $Id$ */
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -28,6 +26,31 @@
 #include "php_sysvmsg.h"
 #include "ext/standard/php_var.h"
 #include "zend_smart_str.h"
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+PHP_MINIT_FUNCTION(sysvmsg);
+PHP_MINFO_FUNCTION(sysvmsg);
+
+PHP_FUNCTION(msg_get_queue);
+PHP_FUNCTION(msg_remove_queue);
+PHP_FUNCTION(msg_stat_queue);
+PHP_FUNCTION(msg_set_queue);
+PHP_FUNCTION(msg_send);
+PHP_FUNCTION(msg_receive);
+PHP_FUNCTION(msg_queue_exists);
+
+typedef struct {
+	key_t key;
+	zend_long id;
+} sysvmsg_queue_t;
+
+struct php_msgbuf {
+	zend_long mtype;
+	char mtext[1];
+};
 
 /* In order to detect MSG_EXCEPT use at run time; we have no way
  * of knowing what the bit definitions are, so we can't just define
@@ -145,7 +168,6 @@ PHP_MINFO_FUNCTION(sysvmsg)
 {
 	php_info_print_table_start();
 	php_info_print_table_row(2, "sysvmsg support", "enabled");
-	php_info_print_table_row(2, "Revision", "$Id$");
 	php_info_print_table_end();
 }
 /* }}} */
@@ -346,14 +368,13 @@ PHP_FUNCTION(msg_receive)
 
 	result = msgrcv(mq->id, messagebuffer, maxsize, desiredmsgtype, realflags);
 
-	zval_dtor(out_msgtype);
-	zval_dtor(out_message);
+	zval_ptr_dtor(out_msgtype);
+	zval_ptr_dtor(out_message);
 	ZVAL_LONG(out_msgtype, 0);
 	ZVAL_FALSE(out_message);
 
 	if (zerrcode) {
-		ZVAL_DEREF(zerrcode);
-		zval_dtor(zerrcode);
+		zval_ptr_dtor(zerrcode);
 		ZVAL_LONG(zerrcode, 0);
 	}
 

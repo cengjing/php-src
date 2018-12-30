@@ -12,12 +12,10 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@zend.com so we can mail you a copy immediately.              |
    +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
+   | Authors: Andi Gutmans <andi@php.net>                                 |
+   |          Zeev Suraski <zeev@php.net>                                 |
    +----------------------------------------------------------------------+
 */
-
-/* $Id$ */
 
 #ifndef ZEND_OBJECTS_API_H
 #define ZEND_OBJECTS_API_H
@@ -37,6 +35,10 @@
 		(o) = (zend_object*)((((zend_uintptr_t)(n)) << 1) | OBJ_BUCKET_INVALID); \
 	} while (0)
 
+#define ZEND_OBJECTS_STORE_ADD_TO_FREE_LIST(h) do { \
+		SET_OBJ_BUCKET_NUMBER(EG(objects_store).object_buckets[(h)], EG(objects_store).free_list_head); \
+		EG(objects_store).free_list_head = (h); \
+	} while (0)
 
 #define OBJ_RELEASE(obj) zend_object_release(obj)
 
@@ -62,12 +64,9 @@ ZEND_API void ZEND_FASTCALL zend_objects_store_del(zend_object *object);
 /* Called when the ctor was terminated by an exception */
 static zend_always_inline void zend_object_store_ctor_failed(zend_object *obj)
 {
-	OBJ_FLAGS(obj) |= IS_OBJ_DESTRUCTOR_CALLED;
+	GC_ADD_FLAGS(obj, IS_OBJ_DESTRUCTOR_CALLED);
 }
 
-#define ZEND_OBJECTS_STORE_HANDLERS 0, zend_object_std_dtor, zend_objects_destroy_object, zend_objects_clone_obj
-
-ZEND_API zend_object_handlers * ZEND_FASTCALL zend_get_std_object_handlers(void);
 END_EXTERN_C()
 
 static zend_always_inline void zend_object_release(zend_object *obj)

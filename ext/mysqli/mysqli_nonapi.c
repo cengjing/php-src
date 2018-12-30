@@ -16,8 +16,6 @@
   |          Andrey Hristov <andrey@php.net>                             |
   |          Ulf Wendel <uw@php.net>                                     |
   +----------------------------------------------------------------------+
-
-  $Id$
 */
 
 #ifdef HAVE_CONFIG_H
@@ -157,7 +155,7 @@ void mysqli_common_connect(INTERNAL_FUNCTION_PARAMETERS, zend_bool is_real_conne
 
 			mysql->hash_key = hash_key;
 
-			/* check if we can reuse exisiting connection ... */
+			/* check if we can reuse existing connection ... */
 			if ((le = zend_hash_find_ptr(&EG(persistent_list), hash_key)) != NULL) {
 				if (le->type == php_le_pmysqli()) {
 					plist = (mysqli_plist_entry *) le->ptr;
@@ -290,7 +288,7 @@ end:
 
 err:
 	if (mysql->hash_key) {
-		zend_string_release(mysql->hash_key);
+		zend_string_release_ex(mysql->hash_key, 0);
 		mysql->hash_key = NULL;
 		mysql->persistent = FALSE;
 	}
@@ -336,7 +334,7 @@ PHP_FUNCTION(mysqli_connect_error)
 }
 /* }}} */
 
-/* {{{ proto mixed mysqli_fetch_array (object result [,int resulttype])
+/* {{{ proto mixed mysqli_fetch_array(object result [,int resulttype])
    Fetch a result row as an associative array, a numeric array, or both */
 PHP_FUNCTION(mysqli_fetch_array)
 {
@@ -344,7 +342,7 @@ PHP_FUNCTION(mysqli_fetch_array)
 }
 /* }}} */
 
-/* {{{ proto mixed mysqli_fetch_assoc (object result)
+/* {{{ proto mixed mysqli_fetch_assoc(object result)
    Fetch a result row as an associative array */
 PHP_FUNCTION(mysqli_fetch_assoc)
 {
@@ -352,7 +350,7 @@ PHP_FUNCTION(mysqli_fetch_assoc)
 }
 /* }}} */
 
-/* {{{ proto mixed mysqli_fetch_all (object result [,int resulttype])
+/* {{{ proto mixed mysqli_fetch_all(object result [,int resulttype])
    Fetches all result rows as an associative array, a numeric array, or both */
 #if defined(MYSQLI_USE_MYSQLND)
 PHP_FUNCTION(mysqli_fetch_all)
@@ -405,7 +403,7 @@ PHP_FUNCTION(mysqli_get_connection_stats)
 #endif
 /* }}} */
 
-/* {{{ proto mixed mysqli_error_list (object connection)
+/* {{{ proto mixed mysqli_error_list(object connection)
    Fetches all client errors */
 PHP_FUNCTION(mysqli_error_list)
 {
@@ -497,7 +495,7 @@ PHP_FUNCTION(mysqli_stmt_error_list)
 }
 /* }}} */
 
-/* {{{ proto mixed mysqli_fetch_object (object result [, string class_name [, NULL|array ctor_params]])
+/* {{{ proto mixed mysqli_fetch_object(object result [, string class_name [, NULL|array ctor_params]])
    Fetch a result row as an object */
 PHP_FUNCTION(mysqli_fetch_object)
 {
